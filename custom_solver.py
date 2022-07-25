@@ -356,7 +356,7 @@ def solve(hidato):
 
 # TODO - maybe incorporate naked pairs/triples/quadruplets etc.. instead of just naked singles.
 
-puzzle = Hidato(lattice5)
+puzzle = Hidato(lattice4)
 puzzle.plot(initial_cells_only=True)
 t0 = time.perf_counter()
 solution = solve(puzzle)
