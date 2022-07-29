@@ -139,7 +139,9 @@ class Hidato:
                 n_spaces += 1
 
     def plot(self, initial_cells_only=False):
-        lattice_flattened = [((i, j), n) for i, row in enumerate(self.lattice) for j, n in enumerate(row)]
+        lattice_flattened = [((i, len(row) - 1 - j), n)
+                             for i, row in enumerate(self.lattice)
+                             for j, n in enumerate(row[::-1])]
         num_cells = len(lattice_flattened)
         min_width = len(self.lattice[0])
         r = min_width - 1
@@ -356,7 +358,7 @@ def solve(hidato):
 
 # TODO - maybe incorporate naked pairs/triples/quadruplets etc.. instead of just naked singles.
 
-puzzle = Hidato(lattice4)
+puzzle = Hidato(lattice1)
 puzzle.plot(initial_cells_only=True)
 t0 = time.perf_counter()
 solution = solve(puzzle)
