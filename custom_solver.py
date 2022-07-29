@@ -358,10 +358,15 @@ def solve(hidato):
 
 # TODO - maybe incorporate naked pairs/triples/quadruplets etc.. instead of just naked singles.
 
-puzzle = Hidato(lattice1)
-puzzle.plot(initial_cells_only=True)
-t0 = time.perf_counter()
-solution = solve(puzzle)
-t1 = time.perf_counter()
-print(f"Solved the hidato In {t1-t0} seconds using {GUESSES} guesses and {CALLS} calls")
-solution.plot()
+def main():
+    puzzle = Hidato(lattice1)
+    puzzle.plot(initial_cells_only=True)
+    t0 = time.perf_counter()
+    solution = solve(puzzle)
+    t1 = time.perf_counter()
+    print(f"Solved the hidato In {t1-t0} seconds using {GUESSES} guesses and {CALLS} calls")
+    solution.plot()
+
+
+if __name__ == '__main__':
+    main()

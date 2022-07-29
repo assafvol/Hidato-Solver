@@ -1,17 +1,19 @@
+import math
 import cv2
 import numpy as np
+from matplotlib import pyplot as plt
 
 
-def preProcess(img):
+def pre_process(img):
     """Receives colored image and returns binary image"""
 
-    imgGray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    imgBlur = cv2.GaussianBlur(imgGray, (5, 5), 1)
-    imgThreshold = cv2.adaptiveThreshold(imgBlur, 255, 1, 1, 11, 2)
-    return imgThreshold
+    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    img_blur = cv2.GaussianBlur(img_gray, (5, 5), 1)
+    img_threshold = cv2.adaptiveThreshold(img_blur, 255, 1, 1, 11, 2)
+    return img_threshold
 
 
-def biggestContour(contours):
+def find_biggest_contour(contours):
     """Receives a list of contours a returns the contour of biggest area of biggest area considering only contour of
        area > 50 and of polygon approximation of more than or equal to 20 corners (smallest hidato of side with 3
        hexagons has 30 corners). Also returns the points of the polygon approximation the perimeter
@@ -91,10 +93,10 @@ def reorder(points):
     return new_points
 
 
-def distance(v1, v2):
+def distance(v1, v2, weights =(1,1)):
     """distance between two 1d vectors represented bynumpy arrays"""
 
-    return np.sqrt(np.sum((v1 - v2) ** 2))
+    return np.sqrt(np.sum(((v1 - v2) ** 2) * np.array(weights)))
 
 
 def get_corner_indices(labels):
@@ -108,7 +110,7 @@ def get_corner_indices(labels):
 
 def find_rectangle_corners(corner_idxs, contour):
     n = len(contour)
-    top_left_idx = min(corner_idxs, key=lambda c_idx: distance((0, 0), contour[c_idx]))
+    top_left_idx = min(corner_idxs, key=lambda c_idx: distance(v1=(0, 0), v2=contour[c_idx], weights=(0.4, 0.6)))
     bottom_left_idx = (corner_idxs[(corner_idxs.index(top_left_idx) + 2) % 6] + 1) % n
     bottom_right_idx = corner_idxs[(corner_idxs.index(top_left_idx) + 3) % 6]
     top_right_idx = (corner_idxs[(corner_idxs.index(top_left_idx) + 5) % 6] + 1) % n
@@ -122,10 +124,10 @@ def find_hexagons(circum, corners_warped):
     all_x = sorted(circum[:, 0])
     all_y = sorted(circum[:, 1])
     n_rows = n_cols = len(circum) // 6
-    W = max(all_x) - min(all_x)
-    H = max(all_y) - min(all_y)
-    h = H / n_rows
-    w = W / n_cols
+    width = max(all_x) - min(all_x)
+    height = max(all_y) - min(all_y)
+    h = height / n_rows
+    w = width / n_cols
     x = get_different_values(all_x, accuracy=w / 5)[1:-1]
     #     y = get_different_values(all_y,accuracy=h/5)
     top_left_w, bottom_left_w, top_right_w, bottom_right_w = corners_warped
@@ -134,7 +136,7 @@ def find_hexagons(circum, corners_warped):
     y = np.mean(np.stack([y_l, y_r], axis=1), axis=1)
     y = [np.mean([y[i], y[i + 1]]) for i in range(1, len(y) - 1, 2)]
 
-    rows = [[] for i in range(n_rows)]
+    rows = [[] for _ in range(n_rows)]
     x_e = x[0::2]
     x_o = x[1::2]
     n_e, n_o = len(x_e), len(x_o)
@@ -147,7 +149,7 @@ def find_hexagons(circum, corners_warped):
         else:
             rows[mid + j] = [[x_e[k], y[mid + j]] for k in range(j // 2, n_e - j // 2)]
             rows[mid - j] = [[x_e[k], y[mid - j]] for k in range(j // 2, n_e - j // 2)]
-    return rows
+    return rows, h, w
 
 
 def get_different_values(lst, accuracy):
@@ -162,3 +164,35 @@ def get_different_values(lst, accuracy):
     if tuple(groups[-1]) != tuple(curr_group):
         groups.append(curr_group)
     return [np.mean(group) for group in groups]
+
+
+def get_boxes(lattice, h, w, img):
+    height_img, width_img = img.shape[:2] if len(img.shape) > 2 else img.shape
+    boxes = [[] for _ in range(len(lattice))]
+    for i, row in enumerate(lattice):
+        for j, (x, y) in enumerate(row):
+            left = max(int(x - w // 2), 0)
+            right = min(int(x + w // 2), width_img)
+            up = max(int(y - h // 2), 0)
+            down = min(int(y + h // 2), height_img)
+            box = img[up:down + 1, left:right + 1]
+            boxes[i].append(box)
+    return boxes
+
+
+def plot_boxes(boxes):
+    n_hexagons = sum(len(row) for row in boxes)
+    q = math.ceil(np.sqrt(n_hexagons))
+    l = n_hexagons // q + 1
+    fig, axes = plt.subplots(nrows=l, ncols=q)
+
+    n = 0
+    for i, row in enumerate(boxes):
+        for j, box in enumerate(row):
+            r = n // q
+            c = n % q
+            axes[r, c].imshow(box)
+            n += 1
+
+    plt.show()
+    plt.tight_layout()
