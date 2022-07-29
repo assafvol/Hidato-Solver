@@ -196,3 +196,15 @@ def plot_boxes(boxes):
 
     plt.show()
     plt.tight_layout()
+
+
+def crop_from_image(img, bbox):
+    img_width, img_height = img.shape
+    x, y, w, h = bbox
+    x_pad = w // 7
+    y_pad = h // 7
+    up = max(y - y_pad, 0)
+    down = min(y + h + y_pad, img_height)
+    left = max(x - x_pad, 0)
+    right = min(x + w + x_pad, img_height)
+    return img[up:down, left:right]

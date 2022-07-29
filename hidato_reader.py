@@ -10,7 +10,7 @@ heightImg = 500
 widthImg = 500
 
 # resize to square and convert to binary image
-img = cv2.imread("images/hidato_img.png")
+img = cv2.imread("images/hidato_img6.png")
 img = cv2.resize(img, (widthImg, heightImg))
 imgThreshold = pre_process(img)
 
@@ -85,7 +85,7 @@ for i, row in enumerate(boxes):
     for j, box in enumerate(row):
         nb_components, _, stats, centroids = cv2.connectedComponentsWithStats(box, connectivity=4)
         for x, y, width, height, _ in sorted(stats[1:], key= lambda lst: lst[0]):
-            digits[i][j].append(cv2.resize(boxes_gray[i][j][y - height//7 : y + height + height//7, x - width//7: x + width + width//7 ], (28, 28)))
+            digits[i][j].append(cv2.resize(crop_from_image(boxes_gray[i][j], (x, y, width, height)), (28, 28)))
 
 
 digit_images = []
