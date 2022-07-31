@@ -10,7 +10,7 @@ heightImg = 500
 widthImg = 500
 
 # resize to square and convert to binary image
-img = cv2.imread("images/hidato_img6.png")
+img = cv2.imread("images/hidato_yedihot_1.jpg")
 img = cv2.resize(img, (widthImg, heightImg))
 imgThreshold = pre_process(img)
 
@@ -84,9 +84,8 @@ digits = [[[] for col in row] for row in boxes]
 for i, row in enumerate(boxes):
     for j, box in enumerate(row):
         nb_components, _, stats, centroids = cv2.connectedComponentsWithStats(box, connectivity=4)
-        for x, y, width, height, _ in sorted(stats[1:], key= lambda lst: lst[0]):
+        for x, y, width, height, _ in sorted(stats[1:], key=lambda lst: lst[0]):
             digits[i][j].append(cv2.resize(crop_from_image(boxes_gray[i][j], (x, y, width, height)), (28, 28)))
-
 
 digit_images = []
 digit_indices = []
@@ -95,31 +94,42 @@ for i, row in enumerate(digits):
         if digit_list:
             for digit_img in digit_list:
                 digit_images.append(digit_img)
-                digit_indices.append([i,j])
+                digit_indices.append([i, j])
 
-print(len(digit_images),len(digit_indices))
+print(len(digit_images), len(digit_indices))
 digit_images = np.expand_dims(np.array(digit_images), axis=3) / 255
 
-plt.imshow(imgWarpGray,cmap='Greys')
-plt.show()
 model = keras.models.load_model("my_model2")
 preds = model.predict(digit_images)
-digit_preds = np.argmax(preds,axis=1)
+digit_preds = np.argmax(preds, axis=1)
 
 final_lattice = [[[] for _ in row] for row in lattice]
 for cell_indices, digit_pred in zip(digit_indices, digit_preds):
-    i,j = cell_indices
+    i, j = cell_indices
     final_lattice[i][j].append(digit_pred)
 
 final_lattice = [[int(''.join(map(str, cell))) if cell else 0 for cell in row] for row in final_lattice]
 hidato = Hidato(final_lattice)
-hidato.plot(initial_cells_only=True)
 solution = solve(hidato)
-solution.plot()
-# final_preds = np.argmax(preds, axis=1)
-# final_preds_proba = np.max(preds, axis=1)
-# for image, pred, pred_proba in zip(digit_images, final_preds, final_preds_proba):
-#     if pred_proba <= 1:
-#         print(f"this is a {pred}, i am {pred_proba*100:.2f}% sure")
-#         plt.imshow(image, cmap='Greys')
-#         plt.show()
+
+if solution is None:
+    raise Exception("Could not solve the hidato")
+
+for i, row in enumerate(solution.lattice):
+    for j, number in enumerate(row):
+        if (i, j) not in solution.initial_cells:
+            desired_width = 0.8*sum(digit[0] for digit in digits[i][j])
+            font_scale = get_optimal_font_scale(str(number), desired_width)
+            imgWarpColored = put_text_centered(imgWarpColored, str(number), lattice[i][j], font_scale)
+
+# plt.imshow(imgWarpColored)
+# plt.show()
+
+inverseImgWarpColored = cv2.warpPerspective(imgWarpColored, matrix, (widthImg, heightImg), flags=cv2.WARP_INVERSE_MAP)
+inverseImgWarpGray = cv2.cvtColor(inverseImgWarpColored, cv2.COLOR_BGR2GRAY)
+plt.imshow(inverseImgWarpColored)
+plt.show()
+
+final_image = tf.where((inverseImgWarpGray == 0).reshape(500, 500, 1), img, inverseImgWarpColored)
+plt.imshow(final_image)
+plt.show()

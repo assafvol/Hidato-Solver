@@ -208,3 +208,26 @@ def crop_from_image(img, bbox):
     left = max(x - x_pad, 0)
     right = min(x + w + x_pad, img_height)
     return img[up:down, left:right]
+
+
+def get_optimal_font_scale(text, width):
+    for scale in reversed(range(1, 60, 1)):
+        textSize = cv2.getTextSize(text, fontFace=cv2.FONT_HERSHEY_DUPLEX, fontScale=scale/10, thickness=1)
+        new_width = textSize[0][0]
+        if new_width <= width:
+            return scale/10
+    return 1
+
+
+def put_text_centered(img, txt, center, scale, color=(0, 255, 0), thickness=3):
+    (text_width, text_height), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX,
+                                                   scale, thickness)
+    img_with_text = cv2.putText(img,
+                                txt,
+                                (int(center[0] - text_width / 2), int(center[1] + text_height / 2)),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                scale,
+                                color,
+                                thickness,
+                                cv2.LINE_AA)
+    return img_with_text
