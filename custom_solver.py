@@ -10,7 +10,7 @@ from test_cases import lattice0, lattice1, lattice2, lattice3, lattice4, lattice
 
 GUESSES = 0
 CALLS = 0
-
+CACHE = dict()
 
 class Hidato:
     def __init__(self, lattice, domains=None, assignment=None, initial_cells=None, anchors=None, distance=None):
@@ -52,6 +52,9 @@ class Hidato:
             forward_check(self)
         else:
             self.domains = deepcopy(domains)
+
+    def __eq__(self, other):
+        return self.lattice == other.lattice
 
     def assign(self, n, cell, get_anchors=False, get_distance_from_anchors=False):
         """Assign value cell to variable n and consequently:
@@ -355,11 +358,26 @@ def solve(hidato):
                 return result
     return None
 
-
 # TODO - maybe incorporate naked pairs/triples/quadruplets etc.. instead of just naked singles.
 
+
+def to_tuple(lst):
+    return tuple(to_tuple(i) if isinstance(i, list) else i for i in lst)
+
+
+def solve_with_cache(lattice):
+    lattice_tuple = to_tuple(lattice)
+    if lattice_tuple in CACHE:
+        return CACHE[to_tuple(lattice)]
+    hidato = Hidato(lattice)
+    solution = solve(hidato)
+    solution_lattice = solution.lattice if solution is not None else None
+    CACHE[lattice_tuple] = solution_lattice
+    return solution_lattice
+
+
 def main():
-    puzzle = Hidato(lattice1)
+    puzzle = Hidato(lattice6)
     puzzle.plot(initial_cells_only=True)
     t0 = time.perf_counter()
     solution = solve(puzzle)

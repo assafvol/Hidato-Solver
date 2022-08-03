@@ -2,6 +2,7 @@ import math
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
+from sklearn.cluster import KMeans
 
 
 def pre_process(img):
@@ -231,3 +232,51 @@ def put_text_centered(img, txt, center, scale, color=(0, 255, 0), thickness=3):
                                 thickness,
                                 cv2.LINE_AA)
     return img_with_text
+
+
+def get_four_hidato_corners(polygon):
+    vectors = np.roll(polygon, -1, axis=0) - polygon
+    k_means_model = KMeans(n_clusters=6)
+    vectors_labels = k_means_model.fit_predict(vectors)
+    corner_indices = get_corner_indices(vectors_labels)
+    four_corners = polygon[find_rectangle_corners(corner_indices, polygon)]
+    return four_corners
+
+
+def transform_perspective(polygon, four_corners, img, img_size):
+    img_width, img_height = img_size
+    n_points = len(polygon)
+    # 2 * n_s - 1 = n_points/6 where n_s is the number of hexagons along one of the sides of the hidato and n_points
+    # is the number of points in the hidato polygon.
+    n_s = (n_points / 6 + 1) / 2
+    x_1 = ((n_s / 2) / (2 * n_s - 1)) * img_width
+    x_2 = ((n_s / 2 + n_s - 1) / (2 * n_s - 1)) * img_width
+
+    # perspective transformation of image, hidato polygon, and polygon four corners
+    pts1 = np.float32(four_corners)
+    pts2 = np.float32([[x_1, 0], [x_1, img_height], [x_2, 0], [x_2, img_height]])
+    matrix = cv2.getPerspectiveTransform(pts1, pts2)
+    imgWarpColored = cv2.warpPerspective(img, matrix, (img_width, img_height))
+    polygon_warped = apply_perspective_transform(polygon, matrix)
+    corners_warped = apply_perspective_transform(four_corners, matrix)
+
+    return imgWarpColored, polygon_warped, corners_warped, matrix
+
+
+def remove_hexagonal_grid_and_noise(imgWarpBinary, imgWarpGray, noise_size):
+    nb_components, output, stats, _ = cv2.connectedComponentsWithStats(imgWarpBinary, connectivity=4)
+    sizes = stats[:, -1]
+
+    # Remove largest component (assumed to be the hexagonal grid)
+    largest_components_label = np.argmax(sizes[1:]) + 1
+    imgWarpBinary[output == largest_components_label] = 0
+    imgWarpGray[output == largest_components_label] = 255
+    imgWarpGray[output == 0] = 255
+
+    # remove all components whose area is small than noise size
+    for i, size in enumerate(sizes):
+        if i != 0 and size < noise_size:
+            imgWarpBinary[output == i] = 0
+            imgWarpGray[output == i] = 255
+
+    return imgWarpBinary, imgWarpGray
