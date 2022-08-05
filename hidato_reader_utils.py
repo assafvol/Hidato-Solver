@@ -129,7 +129,8 @@ def find_hexagons(circum, corners_warped):
     height = max(all_y) - min(all_y)
     h = height / n_rows
     w = width / n_cols
-    x = get_different_values(all_x, accuracy=w / 5)[1:-1]
+    # x = get_different_values(all_x, accuracy=w / 5)[1:-1]
+    x = get_lattice_x_values(all_x)[1:-1]
     #     y = get_different_values(all_y,accuracy=h/5)
     top_left_w, bottom_left_w, top_right_w, bottom_right_w = corners_warped
     y_r = np.sort(circum[circum[:, 0] >= min(top_right_w[0], bottom_right_w[0])][:, 1])
@@ -151,6 +152,19 @@ def find_hexagons(circum, corners_warped):
             rows[mid + j] = [[x_e[k], y[mid + j]] for k in range(j // 2, n_e - j // 2)]
             rows[mid - j] = [[x_e[k], y[mid - j]] for k in range(j // 2, n_e - j // 2)]
     return rows, h, w
+
+
+def get_lattice_x_values(all_x):
+    n_rows = len(all_x) // 6
+    n_s = (n_rows + 1) // 2
+    group_lengths = iter([2] + [4] * (n_s-1) + [2] * n_rows + [4]* (n_s-1) + [2])
+    x = []
+    i = 0
+    while i < len(all_x):
+        group_len = next(group_lengths)
+        x.append(np.mean(all_x[i:i + group_len]))
+        i += group_len
+    return x
 
 
 def get_different_values(lst, accuracy):
@@ -235,13 +249,27 @@ def put_text_centered(img, txt, center, scale, color=(0, 255, 0), thickness=3):
 
 
 def get_four_hidato_corners(polygon):
-    vectors = np.roll(polygon, -1, axis=0) - polygon
-    k_means_model = KMeans(n_clusters=6)
-    vectors_labels = k_means_model.fit_predict(vectors)
+    # vectors = np.roll(polygon, -1, axis=0) - polygon
+    # k_means_model = KMeans(n_clusters=6)
+    # vectors_labels = k_means_model.fit_predict(vectors)
+    vectors_labels = cluster_by_angles(polygon)
     corner_indices = get_corner_indices(vectors_labels)
     four_corners = polygon[find_rectangle_corners(corner_indices, polygon)]
     return four_corners
 
+def cluster_by_angles(polygon):
+    vectors = np.roll(polygon, -1, axis=0) - polygon
+    angles = (np.arctan2(vectors[:,1],vectors[:,0]) % (2*np.pi)) * (360/(2*np.pi))
+    
+    order = np.argsort(angles)
+    original_order = np.argsort(order)
+    
+    angles = angles[order]
+    diffs = (-(np.roll(angles,shift=1) - angles)) % 360
+    transition_diff = np.sort(diffs)[-6]
+
+    labels = np.cumsum(diffs >= transition_diff) % 6
+    return labels[original_order]
 
 def transform_perspective(polygon, four_corners, img, img_size):
     img_width, img_height = img_size
@@ -263,20 +291,35 @@ def transform_perspective(polygon, four_corners, img, img_size):
     return imgWarpColored, polygon_warped, corners_warped, matrix
 
 
+# def remove_hexagonal_grid_and_noise(imgWarpBinary, imgWarpGray, noise_size):
+#     nb_components, output, stats, _ = cv2.connectedComponentsWithStats(imgWarpBinary, connectivity=4)
+#     sizes = stats[:, -1]
+
+#     # Remove largest component (assumed to be the hexagonal grid)
+#     largest_components_label = np.argmax(sizes[1:]) + 1
+#     imgWarpBinary[output == largest_components_label] = 0
+#     imgWarpGray[output == largest_components_label] = 255
+#     imgWarpGray[output == 0] = 255
+
+#     # remove all components whose area is small than noise size
+#     for i, size in enumerate(sizes):
+#         if i != 0 and size < noise_size:
+#             imgWarpBinary[output == i] = 0
+#             imgWarpGray[output == i] = 255
+
+#     return imgWarpBinary, imgWarpGray
+
 def remove_hexagonal_grid_and_noise(imgWarpBinary, imgWarpGray, noise_size):
     nb_components, output, stats, _ = cv2.connectedComponentsWithStats(imgWarpBinary, connectivity=4)
     sizes = stats[:, -1]
 
-    # Remove largest component (assumed to be the hexagonal grid)
-    largest_components_label = np.argmax(sizes[1:]) + 1
-    imgWarpBinary[output == largest_components_label] = 0
-    imgWarpGray[output == largest_components_label] = 255
-    imgWarpGray[output == 0] = 255
-
-    # remove all components whose area is small than noise size
-    for i, size in enumerate(sizes):
-        if i != 0 and size < noise_size:
-            imgWarpBinary[output == i] = 0
-            imgWarpGray[output == i] = 255
+    max_size = max(sizes[1:])
+    keep = np.nonzero((noise_size <= sizes) & (sizes < max_size))[0] 
+    mask = np.isin(output,keep)
+    
+    imgWarpBinary = np.where(mask,imgWarpBinary,0)
+    imgWarpGray = np.where(mask,imgWarpGray,255)
 
     return imgWarpBinary, imgWarpGray
+
+

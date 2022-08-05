@@ -2,10 +2,12 @@ from hidato_reader_utils import *
 from custom_solver import *
 from sklearn.cluster import KMeans
 import tensorflow as tf
+print("disabling eager exectuion")
+tf.compat.v1.disable_eager_execution()
 from tensorflow import keras
+classifier_model = keras.models.load_model("my_model2")
 
-
-def read_and_solve_hidato(img, heightImg=500, widthImg=500, debug=False):
+def read_and_solve_hidato(img, heightImg=500, widthImg=500, debug=False, model=classifier_model):
     # resize to square and convert to binary image
     img = cv2.resize(img, (widthImg, heightImg))
     imgThreshold = pre_process(img)
@@ -66,6 +68,12 @@ def read_and_solve_hidato(img, heightImg=500, widthImg=500, debug=False):
     imgWarpBinary = pre_process(imgWarpColored)
     imgWarpGray = cv2.cvtColor(imgWarpColored, cv2.COLOR_BGR2GRAY)
 
+    # print(f"noise_size = {0.03 * w * h}")
+    # with open("imWarpBinary.npy","wb") as f:
+    #     np.save(f,imgWarpBinary)
+    # with open("imWarpGray.npy","wb") as f:
+    #     np.save(f,imgWarpGray)
+        
     imgWarpBinary, imgWarpGray = remove_hexagonal_grid_and_noise(imgWarpBinary, imgWarpGray, noise_size=0.03 * w * h)
 
     if debug:
@@ -98,25 +106,32 @@ def read_and_solve_hidato(img, heightImg=500, widthImg=500, debug=False):
 
     digit_images = np.expand_dims(np.array(digit_images), axis=3) / 255
 
-    model = keras.models.load_model("my_model2")
     digit_probas = model.predict(digit_images)
-    # digit_preds = np.argmax(preds, axis=1)
 
     final_lattice = [[[] for _ in row] for row in lattice]
     for cell_indices, digit_proba in zip(digit_indices, digit_probas):
         i, j = cell_indices
         max_proba = np.max(digit_proba)
         digit_pred = np.argmax(digit_proba)
-        if max_proba >= 0.8:
+        if max_proba >= 0.85:
             final_lattice[i][j].append(digit_pred)
 
     final_lattice = [[int(''.join(map(str, cell))) if cell else 0 for cell in row] for row in final_lattice]
 
+    if debug:
+        hidato = Hidato(final_lattice)
+        hidato.plot(initial_cells_only=True)
+        val = input("Press c to to continue or q to quit: ")
+        while val not in ('c','q'):
+            val = input("Invalid input, press c to to continue or q to quit: ")
+        if val == 'q':
+            return
+    
     t0 = time.perf_counter()
     solution_lattice = solve_with_cache(final_lattice)
     t1 = time.perf_counter()
-    if solution_lattice is not None:
-        print(f"In {t1-t0} seconds")
+    if debug and solution_lattice is not None:
+        print(f"Solved the sudoku In {t1-t0} seconds")
 
     if solution_lattice is None:
         raise Exception("Could not solve the hidato")
