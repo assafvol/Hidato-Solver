@@ -106,6 +106,15 @@ def read_and_solve_hidato(img, heightImg=500, widthImg=500, debug=False, model=c
 
     digit_images = np.expand_dims(np.array(digit_images), axis=3) / 255
 
+    if debug:
+        n = len(digit_images)
+        nc = int(np.sqrt(n))+1
+        fig, ax = plt.subplots(nrows=nc,ncols=nc, figsize=(15,15))
+        for i,digit_image in enumerate(digit_images):
+            i_row, i_col = i // nc, i % nc
+            ax[i_row][i_col].imshow(digit_image)
+        plt.tight_layout()
+        
     digit_probas = model.predict(digit_images)
 
     final_lattice = [[[] for _ in row] for row in lattice]
@@ -121,17 +130,17 @@ def read_and_solve_hidato(img, heightImg=500, widthImg=500, debug=False, model=c
     if debug:
         hidato = Hidato(final_lattice)
         hidato.plot(initial_cells_only=True)
-        val = input("Press c to to continue or q to quit: ")
+        val = input("Press c to to continue or q to quit")
         while val not in ('c','q'):
-            val = input("Invalid input, press c to to continue or q to quit: ")
+            val = input("Invalid input, press c to to continue or q to quit")
         if val == 'q':
             return
     
     t0 = time.perf_counter()
     solution_lattice = solve_with_cache(final_lattice)
     t1 = time.perf_counter()
-    if debug and solution_lattice is not None:
-        print(f"Solved the sudoku In {t1-t0} seconds")
+    # if solution_lattice is not None:
+    #     print(f"In {t1-t0} seconds")
 
     if solution_lattice is None:
         raise Exception("Could not solve the hidato")
