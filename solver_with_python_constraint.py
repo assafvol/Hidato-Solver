@@ -3,7 +3,7 @@ from copy import deepcopy
 from collections import deque
 from constraint import Problem, AllDifferentConstraint
 from termcolor import cprint
-from test_cases import lattice0, lattice1, lattice2, lattice3, lattice4, lattice5, lattice6, lattice7
+from test_cases import lattices
 
 
 class Hidato:
@@ -142,7 +142,7 @@ def solve_with_csp(hidato):
 
 
 print("Problem:")
-puzzle = Hidato(lattice5)
+puzzle = Hidato(lattices['l5'])
 puzzle.print()
 print("Solution:")
 t0 = time.perf_counter()

@@ -2,7 +2,7 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 from hidato_reader import *
 
-cap = cv2.VideoCapture("images/hidato_video_3.mp4")
+cap = cv2.VideoCapture("images/hidato_video_4.mp4")
 
 while True:
     ret, frame = cap.read()
@@ -12,7 +12,7 @@ while True:
         t1 = time.perf_counter()
         print(f"solved frame in {t1-t0} seconds")
     except:
-        solution_frame = frame
+        solution_frame = cv2.resize(frame, (500, 500))
     cv2.imshow('frame', frame)
     cv2.imshow('solution_frame', solution_frame)
 

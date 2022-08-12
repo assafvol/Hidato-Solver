@@ -1,3 +1,4 @@
+import pickle
 import time
 from copy import deepcopy
 from collections import deque, defaultdict
@@ -8,7 +9,7 @@ import numpy as np
 from hexalattice import hexalattice
 from matplotlib import pyplot as plt
 from termcolor import cprint
-from test_cases import lattice0, lattice1, lattice2, lattice3, lattice4, lattice5, lattice6, lattice7
+from test_cases import lattices
 
 GUESSES = 0
 CALLS = 0
@@ -17,7 +18,7 @@ CACHE = dict()
 
 class Hidato:
     def __init__(self, lattice, domains=None, assignment=None, initial_cells=None, anchors=None, distance=None):
-        self.lattice = deepcopy(lattice)
+        self.lattice = mydeepcopy(lattice)
         self.height = len(lattice)
         self.min_width = len(lattice[0])
         self.max_value = sum(self.min_width + i for i in range(self.height // 2 + 1)) * 2 - len(
@@ -41,20 +42,20 @@ class Hidato:
         if anchors is None:
             self.anchors = self.get_anchors()
         else:
-            self.anchors = deepcopy(anchors)
+            self.anchors = mydeepcopy(anchors)
 
         if distance is None:
             self.distance = self.get_distances_from_anchors()
         else:
-            self.distance = deepcopy(distance)
+            self.distance = mydeepcopy(distance)
 
         if domains is None:
             self.domains = {n: (self.cells - set(self.assignment.values())).copy()
                             if n not in self.assignment else {self.assignment[n]}
                             for n in self.variables}
-            forward_check(self)
+            make_inferences(self)
         else:
-            self.domains = deepcopy(domains)
+            self.domains = mydeepcopy(domains)
 
     def __eq__(self, other):
         return self.lattice == other.lattice
@@ -65,7 +66,9 @@ class Hidato:
             2) Add n to assignment
             3) Update the domain of n to be {cell} and remove cell from the domains of all other variables
             4) If get_anchors flag is True: Update the anchors
-            5) If get_distance_from_anchors is True: Update distance to anchors"""
+            5) If get_distance_from_anchors is True: Update distance to anchors
+
+            returns True if assignment was successful or False if unsuccessful (found contradiction)"""
 
         self.lattice[cell[0]][cell[1]] = n
         self.assignment[n] = cell
@@ -73,10 +76,13 @@ class Hidato:
         for var in self.domains:
             if var != n and cell in self.domains[var]:
                 self.domains[var].remove(cell)
+                if self.domains[var] == set():
+                    return False
         if get_anchors:
             self.anchors = self.get_anchors()
         if get_distance_from_anchors:
             self.distance = self.get_distances_from_anchors()
+        return True
 
     def get_anchors(self):
         """return a dictionary that for every unassigned number keeps the anchors of that number. the anchors of
@@ -241,7 +247,7 @@ def possible(cell, n, hidato):
     return True
 
 
-def reduce_domains(hidato):
+def reduce_domains_by_distance(hidato):
     """
     Go over all unassigned variables. for every unassigned variable m, go over all its possible cells in domain
     and keep in domain only cells where, for each anchor of n, the cell is reachable from the anchor and
@@ -280,6 +286,18 @@ def reduce_domains(hidato):
     return contradiction, new_inferences
 
 
+def get_cell_domains_of_empty_cells(hidato):
+    empty_cells = hidato.cells - set(hidato.assignment.values())
+    cell_domains = defaultdict(set)
+
+    for cell in empty_cells:
+        for n, domain in hidato.domains.items():
+            if cell in domain:
+                cell_domains[cell].add(n)
+
+    return cell_domains
+
+
 def find_naked_cells(hidato):
     """Make new inferences by looking at the domains and finding cells which only appear in a domain of a single
     variable n.
@@ -293,15 +311,8 @@ def find_naked_cells(hidato):
                      value cell can be assigned to variable n for every n:cell pair in new_inferences.
     """
 
-    empty_cells = hidato.cells - set(hidato.assignment.values())
-    cell_domains = defaultdict(set)
+    cell_domains = get_cell_domains_of_empty_cells(hidato)
     new_inferences = dict()
-
-    for cell in empty_cells:
-        for n, domain in hidato.domains.items():
-            if cell in domain:
-                cell_domains[cell].add(n)
-
     for cell, cell_domain in cell_domains.items():
         if cell_domain == set():
             return True, new_inferences
@@ -312,7 +323,7 @@ def find_naked_cells(hidato):
     return False, new_inferences
 
 
-def forward_check(hidato):
+def make_inferences(hidato):
     """
     Make inferences from current state of hidato and return whether a contradiction was found when making the
     inferences.
@@ -324,64 +335,112 @@ def forward_check(hidato):
     contradiction - boolean indicating whether hidato contains a contradiction, i.e, it is unsolvable
         """
     while True:
-        contradiction_1, new_inferences_1 = reduce_domains(hidato)
-        contradiction_3, new_inferences_3 = hidden_pairs(hidato)
-        contradiction_2, new_inferences_2 = find_naked_cells(hidato)
-        contradiction = contradiction_1 or contradiction_2 or contradiction_3
-        new_inferences = {**new_inferences_1, **new_inferences_2, **new_inferences_3}
+        new_assignments = dict()
+        contradiction, assignments = reduce_domains_by_distance(hidato)
         if contradiction:
             return contradiction
-        elif not new_inferences:
-            return False
-        else:
-            for var, val in new_inferences.items():
-                hidato.assign(var, val)
+        new_assignments.update(assignments)
+        contradiction, assignments = find_naked_cells(hidato)
+        if contradiction:
+            return contradiction
+        new_assignments.update(assignments)
+        # contradiction, assignments = hidden_subset(hidato, 2)
+        # if contradiction:
+        #     return contradiction
+        # new_assignments.update(assignments)
+        # naked_subset(hidato, n=2)
+        if new_assignments:
+            for var, val in new_assignments.items():
+                if not hidato.assign(var, val):
+                    return True
             hidato.anchors = hidato.get_anchors()
             hidato.distance = hidato.get_distances_from_anchors()
+        else:
+            return False
 
 
-def hidden_pairs(hidato):
-    """Go over all possible pairs of unassigned numbers (Here by unassigned we mean as more than 1 cell in its domain) since
-    there may be numbers with just one number in there domain that were just not formally assigned yet. If there union
-    of domains has 2 cells Remove these 2 cells from the domains of all other numbers"""
+def hidden_subset(hidato, n):
+    """Go over all possible subsets of size n of the unassigned numbers (Here, by unassigned I mean has more than 1 cell
+     in its domain since there may be numbers with just a single cell in they're domain that are not formally assigned
+     yet). If the union of the domains of the numbers in the subset has n cells, remove these n cells from the domains
+     of all other numbers"""
+
     contradiction = False
     new_inferences = dict()
     new_cells = set()
     candidates = {var for var, domain in hidato.domains.items() if len(domain) > 1}
-    pairs = combinations(candidates, 2)
-    for pair in pairs:
-        pair_domain_union = hidato.domains[pair[0]] | hidato.domains[pair[1]]
-        if len(pair_domain_union) == 2:
+    # if n == 2:
+    #     subsets = [(m-1, m) for m in candidates if m>1 and m-1 in candidates]
+    # else:
+    subsets = combinations(candidates, n)
+    
+    for subset in subsets:
+        subset_domain_union = reduce(lambda d1, d2: d1 | d2, [hidato.domains[candidate] for candidate in subset])
+        if len(subset_domain_union) == n:
             for candidate in candidates:
-                if candidate not in pair:
-                    hidato.domains[candidate] -= pair_domain_union
+                if candidate not in subset:
+                    hidato.domains[candidate] -= subset_domain_union
                     if len(hidato.domains[candidate]) == 1:
-                        m_cell = list(hidato.domains[candidate])[0]
-                        if m_cell in new_cells:
+                        candidate_cell = list(hidato.domains[candidate])[0]
+                        if candidate_cell in new_cells:
                             contradiction = True
                             break
-                        new_inferences[candidate] = m_cell
-                        new_cells.add(m_cell)
+                        new_inferences[candidate] = candidate_cell
+                        new_cells.add(candidate_cell)
                     if hidato.domains[candidate] == set():
                         contradiction = True
                         break
     return contradiction, new_inferences
 
 
-def report_hidden_subsets(hidato, n):
-    """Go over all possible pairs of unassigned numbers (Here by unassigned we mean as more than 1 cell in its domain) since
-    there may be numbers with just one number in there domain that were just not formally assigned yet. If there union
-    of domains has 2 cells Remove these 2 cells from the domains of all other numbers"""
+def naked_subset(hidato, n):
+    """We find naked subsets by going over all subset of empty cells (cells) (by empty we mean cells that currently have
+    more than 1 number in they're domains. for each subset of cells we look to see at the union the domains of numbers
+    for each cell in the subset. If the length of the union is equal to n, Remove all other cells from all numbers in
+    union)"""
+    cell_domains = get_cell_domains_of_empty_cells(hidato)
 
-    hidden_subsets_found = 0
+    candidates = {cell for cell, domain in cell_domains.items() if len(domain) > 1}
+    subsets = combinations(candidates, n)
+    for subset in subsets:
+        subset_domain_union = reduce(lambda d1, d2: d1 | d2, [cell_domains[candidate] for candidate in subset])
+        if len(subset_domain_union) == n:
+            for number in subset_domain_union:
+                hidato.domains[number] = hidato.domains[number] & set(subset)
+
+
+def report_hidden_subsets(hidato, n):
+    """Find the number of hidden subsets of size n and print it"""
+
+    hidden_subsets_found = dict()
     candidates = {var for var, domain in hidato.domains.items() if len(domain) > 1}
     subsets = combinations(candidates, n)
     for subset in subsets:
         subset_domain_union = reduce(lambda d1, d2: d1 | d2, [hidato.domains[candidate] for candidate in subset])
         if len(subset_domain_union) == n:
-            hidden_subsets_found += 1
+            hidden_subsets_found[subset] = subset_domain_union
     if hidden_subsets_found:
-        print(f"Found {hidden_subsets_found} hidden subsets of size {n}")
+        subset_cells = list(next(iter(hidden_subsets_found.values())))
+        all_neighbors = all(any(cell2 in hidato.neighbors(cell1) for cell2 in subset_cells) for cell1 in subset_cells)
+        print(f"Found {hidden_subsets_found} hidden subsets of size {n}. They are all neighbors -> {all_neighbors}")
+        
+
+def report_naked_subsets(hidato, n):
+    """Find the number of naked subsets of size n and print it."""
+
+    naked_subsets_found = dict()
+    cell_domains = get_cell_domains_of_empty_cells(hidato)
+
+    candidates = {cell for cell, domain in cell_domains.items() if len(domain) > 1}
+    subsets = combinations(candidates, n)
+    for subset in subsets:
+        subset_domain_union = reduce(lambda d1, d2: d1 | d2, [cell_domains[candidate] for candidate in subset])
+        if len(subset_domain_union) == n:
+            naked_subsets_found[subset] = subset_domain_union
+    if naked_subsets_found:
+        subset_cells = list(next(iter(naked_subsets_found.keys())))
+        all_neighbors = all(any(cell2 in hidato.neighbors(cell1) for cell2 in subset_cells) for cell1 in subset_cells)
+        print(f"Found {naked_subsets_found} naked subsets of size {n}. They are all neighbors -> {all_neighbors}")
 
 
 def solve(hidato):
@@ -397,9 +456,9 @@ def solve(hidato):
     for val in order_domain_values(var, hidato):
         if possible(val, var, hidato):
             new_hidato = hidato.copy()
-            new_hidato.assign(var, val, get_anchors=True, get_distance_from_anchors=True)
-            contradiction = forward_check(new_hidato)
-            report_hidden_subsets(hidato, n=3)
+            if not new_hidato.assign(var, val, get_anchors=True, get_distance_from_anchors=True):
+                continue
+            contradiction = make_inferences(new_hidato)
             if contradiction:
                 continue
             result = solve(new_hidato)
@@ -407,6 +466,22 @@ def solve(hidato):
                 return result
     return None
 
+
+def valid(hidato):
+    """Does a simple check of hidato validity. Checks to see if all the values in the lattice cells are unique.
+    and for every cell with number n verifys that if n-1 or n+1 are assigned then they are neibhors of cell"""
+
+    vals = [n for row in hidato.lattice for n in row if n != 0]
+    if len(set(vals)) != len(vals):
+        return False
+
+    for n in hidato.assignment:
+        if n-1 in hidato.assignment and hidato.assignment[n-1] not in hidato.neighbors(hidato.assignment[n]):
+            return False
+        if n+1 in hidato.assignment and hidato.assignment[n+1] not in hidato.neighbors(hidato.assignment[n]):
+            return False
+
+    return True
 # TODO - maybe incorporate naked pairs/triples/quadruplets etc.. instead of just naked singles.
 
 
@@ -419,20 +494,40 @@ def solve_with_cache(lattice):
     if lattice_tuple in CACHE:
         return CACHE[to_tuple(lattice)]
     hidato = Hidato(lattice)
+    if not valid(hidato):
+        raise ValueError("Unvalid hidato, cannot solve")
     solution = solve(hidato)
     solution_lattice = solution.lattice if solution is not None else None
     CACHE[lattice_tuple] = solution_lattice
     return solution_lattice
 
 
+def get_model_benchmark(f):
+    benchmark = []
+    for i in range(6):
+        puzzle = Hidato(lattices[f'l{i}'])
+        t0 = time.perf_counter()
+        f(puzzle)
+        t1 = time.perf_counter()
+        benchmark.append(t1-t0)
+    return benchmark
+
+
+def mydeepcopy(obj):
+    try:
+        return pickle.loads(pickle.dumps(obj, -1))
+    except pickle.PicklingError:
+        return deepcopy(obj)
+
+
 def main():
-    puzzle = Hidato(lattice3)
-    # puzzle.plot(initial_cells_only=True)
+    puzzle = Hidato(lattices['l6'])
+    puzzle.plot(initial_cells_only=False)
     t0 = time.perf_counter()
     solution = solve(puzzle)
     t1 = time.perf_counter()
     print(f"Solved the hidato In {t1-t0} seconds using {GUESSES} guesses and {CALLS} calls")
-    # solution.plot()
+    solution.plot()
 
 
 if __name__ == '__main__':
